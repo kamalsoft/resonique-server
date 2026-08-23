@@ -6,6 +6,7 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
@@ -16,6 +17,18 @@ const MAX_REQUEST_BYTES: usize = 1_048_576;
 const MAX_VECTOR_DIMENSIONS: usize = 4_096;
 const MAX_TOP_K: usize = 1_000;
 const MAX_COLLECTION_NAME_LENGTH: usize = 128;
+const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:3000";
+
+fn http_bind_addr() -> SocketAddr {
+    std::env::var("RESONIQUE_HTTP_ADDR")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_else(|| {
+            DEFAULT_HTTP_ADDR
+                .parse()
+                .expect("default HTTP address must be valid")
+        })
+}
 
 pub static INSERT_COUNT: AtomicU64 = AtomicU64::new(0);
 pub static SEARCH_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -151,11 +164,12 @@ pub fn build_router(manager: SharedState) -> Router {
 
 pub async fn start_http_api(manager: SharedState) {
     let app = build_router(manager);
+    let address = http_bind_addr();
 
-    let listener = match tokio::net::TcpListener::bind("127.0.0.1:3000").await {
+    let listener = match tokio::net::TcpListener::bind(address).await {
         Ok(listener) => listener,
         Err(error) => {
-            tracing::error!(%error, "failed to bind HTTP API listener");
+            tracing::error!(%error, %address, "failed to bind HTTP API listener");
             return;
         }
     };
@@ -278,7 +292,6 @@ async fn handle_search(
 
     validate_collection(&payload.collection)?;
     validate_vector(&payload.query, "query")?;
-
     validate_top_k(payload.top_k)?;
 
     let mut manager = state.lock().await;
@@ -384,6 +397,27 @@ async fn handle_metrics() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    static ENV_LOCK: StdMutex<()> = StdMutex::new(());
+
+    #[test]
+    fn uses_default_http_address() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::remove_var("RESONIQUE_HTTP_ADDR") };
+
+        assert_eq!(http_bind_addr(), "127.0.0.1:3000".parse().unwrap());
+    }
+
+    #[test]
+    fn uses_configured_http_address() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("RESONIQUE_HTTP_ADDR", "0.0.0.0:8080") };
+
+        assert_eq!(http_bind_addr(), "0.0.0.0:8080".parse().unwrap());
+
+        unsafe { std::env::remove_var("RESONIQUE_HTTP_ADDR") };
+    }
 
     #[test]
     fn accepts_valid_collection_name() {
@@ -593,5 +627,26 @@ mod http_tests {
 
         let body = error_response(response).await;
         assert_eq!(body["error"]["code"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn excessive_top_k_returns_consistent_error() {
+        let response = test_app()
+            .oneshot(
+                Request::post("/search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{"collection":"default","query":[1.0],"top_k":{}}}"#,
+                        MAX_TOP_K + 1
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = error_response(response).await;
+        assert_eq!(body["error"]["code"], "invalid_top_k");
     }
 }
