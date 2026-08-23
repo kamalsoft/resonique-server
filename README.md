@@ -631,4 +631,83 @@ For API changes, also perform the API smoke test and update the relevant files u
 | `docs/visuals/data-flow-diagram.md` | Insert and search flow |
 | `docs/visuals/module-dependencies.md` | Rust module dependencies |
 
+## Implemented Features
+
+- Rust server built and managed with Cargo.
+- HTTP API on the configured local address.
+- Health-check endpoint.
+- MCP stdio transport.
+- Configurable storage root.
+- Collections and partitions.
+- Segment-based persistent storage.
+- Write-ahead logging and replay.
+- Secondary indexing.
+- Search operations.
+- Path-traversal protection.
+- Unit, integration, security, and performance tests.
+- Architecture, data-flow, topology, and module documentation.
+-  Upgrade and migration runbooks
+- Request limits and consistent errors 
+
+## Roadmap
+
+### High Priority
+
+| Area | Item | Status |
+|---|---|---|
+| Developer Experience | CI checks for tests, Clippy, audit, and dependencies | TODO |
+| Documentation | Security, backup, and recovery runbooks | TODO |
+| MCP | Production protocol validation and interoperability tests | TODO |
+| Observability | Readiness and liveness endpoints | TODO |
+| Scalability | Concurrent load and saturation testing | TODO |
+| Security | Authentication and authorization | TODO |
+| Storage | Backup and restore procedures | TODO |
+| Storage | Corruption and crash-injection testing | TODO |
+
+### Medium Priority
+
+| Area | Item | Status |
+|---|---|---|
+| APIs | API schema and versioning | TODO |
+| APIs | Pagination and rate limiting | TODO |
+| Developer Experience | Reproducible benchmark and test-data tooling | TODO |
+| Documentation | API reference and deployment guide | TODO |
+| gRPC | gRPC service, protobuf contract, and client tests | TODO |
+| Metadata | Persistent metadata catalog and migrations | TODO |
+| Observability | Distributed tracing and request IDs | TODO |
+| Observability | Expanded Prometheus metrics | TODO |
+| Storage | Segment compaction and lifecycle management | TODO |
+
+### Low Priority
+
+| Area | Item | Status |
+|---|---|---|
+| Documentation | Upgrade and migration runbooks | TODO |
+| Scalability | Horizontal scaling and partition distribution | TODO |
+| Scalability | Replication and high-availability strategy | TODO |
+| Security | TLS or documented reverse-proxy deployment | TODO |
+
+### Priority Rationale
+
+- **High:** Required for data safety, security, operational visibility, and production validation.
+- **Medium:** Improves maintainability, API maturity, and operational performance.
+- **Low:** Depends on confirmed production scale and deployment requirements.
+
+## Current Validation
+
+The current validation baseline passes:
+
+- `cargo fmt --check`
+- `cargo check`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --all-features`
+
+Roadmap items must only move to **Implemented Features** after implementation, tests, documentation, and validation are complete.
+
+- Request-size, vector-dimension, collection-name, and `top_k` limits.
+- Consistent JSON errors for malformed requests, validation failures, oversized bodies, missing collections, and storage failures.
+- HTTP tests covering all request-limit and error cases.
+
+## CI checks for formatting, compilation, tests, Clippy, security advisories, and dependency policy.
+
 

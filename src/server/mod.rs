@@ -26,7 +26,11 @@ pub async fn run() -> Result<()> {
         .iter()
         .map(Collection::from_manifest)
         .collect();
-    let manager = CollectionManager::new(&storage, collections)?;
+    let mut manager =
+        CollectionManager::new_with_node_id(&storage, collections, config.node_id.clone())?;
+
+    manager.set_nodes(config.nodes);
+
     let shared_manager = Arc::new(Mutex::new(manager));
 
     let mcp_manager = shared_manager.clone();

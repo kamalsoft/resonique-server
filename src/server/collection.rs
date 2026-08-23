@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
-use crate::model::Collection;
+use crate::model::{Collection, NodeConfig};
 use crate::storage::StorageEngine;
 use crate::storage::segment::Segment;
 use crate::storage::wal::Wal;
@@ -10,6 +10,7 @@ use crate::storage::wal::Wal;
 pub struct PartitionState {
     pub name: String,
     pub hash_range: (u64, u64),
+    pub node_id: String,
     pub segment: Segment,
     pub wal: Wal,
 }
@@ -21,11 +22,30 @@ pub struct CollectionState {
 }
 
 pub struct CollectionManager {
+    pub node_id: String,
+    pub nodes: HashMap<String, String>,
     pub collections: HashMap<String, CollectionState>,
 }
 
 impl CollectionManager {
+    pub fn set_nodes(&mut self, nodes: Vec<NodeConfig>) {
+        self.nodes = nodes
+            .into_iter()
+            .map(|node| (node.id, node.address))
+            .collect();
+    }
+
+    #[allow(dead_code)]
     pub fn new(engine: &StorageEngine, collections_config: Vec<Collection>) -> Result<Self> {
+        Self::new_with_node_id(engine, collections_config, "node-0")
+    }
+
+    pub fn new_with_node_id(
+        engine: &StorageEngine,
+        collections_config: Vec<Collection>,
+        node_id: impl Into<String>,
+    ) -> Result<Self> {
+        let node_id = node_id.into();
         let mut collections = HashMap::new();
 
         for col in collections_config {
@@ -37,14 +57,12 @@ impl CollectionManager {
 
                 let segment_path = engine.resolve(&segment_filename);
                 let wal_path = engine.resolve(&wal_filename);
-
-                // Open existing segment or create a new one
                 let mut segment = Segment::open(&segment_path)?;
                 let wal = Wal::open(&wal_path)?;
 
-                // Replay WAL to rebuild in-memory index
                 let records = Wal::replay(&wal_path)?;
                 let mut current_offset = segment.header.payload_offset;
+
                 for record in records {
                     let payload_len = record.payload.len() as u32;
                     let metadata_bytes = serde_json::to_vec(&record.metadata)?;
@@ -65,6 +83,7 @@ impl CollectionManager {
                 partitions.push(PartitionState {
                     name: part.name,
                     hash_range: part.hash_range,
+                    node_id: part.node_id,
                     segment,
                     wal,
                 });
@@ -79,7 +98,11 @@ impl CollectionManager {
             );
         }
 
-        Ok(Self { collections })
+        Ok(Self {
+            node_id,
+            nodes: HashMap::new(),
+            collections,
+        })
     }
 
     pub fn route_partition<'a>(
@@ -87,23 +110,50 @@ impl CollectionManager {
         collection_name: &str,
         vector_id: u64,
     ) -> Result<&'a mut PartitionState> {
+        let node_id = self.node_id.clone();
         let col = self
             .collections
             .get_mut(collection_name)
-            .ok_or_else(|| anyhow::anyhow!("Collection not found: {}", collection_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Collection not found: {collection_name}"))?;
 
-        // Simple hash function for routing
-        let h = vector_id; // Given u64 id, hash(id) % u64::MAX is basically the id itself in our sandbox
+        col.partitions
+            .iter_mut()
+            .find(|part| {
+                part.node_id == node_id
+                    && vector_id >= part.hash_range.0
+                    && vector_id <= part.hash_range.1
+            })
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Partition for vector_id {vector_id} is not owned by node {node_id}"
+                )
+            })
+    }
 
-        for part in &mut col.partitions {
-            if h >= part.hash_range.0 && h <= part.hash_range.1 {
-                return Ok(part);
-            }
-        }
+    #[allow(dead_code)]
+    pub fn partition_owner(
+        &self,
+        collection_name: &str,
+        vector_id: u64,
+    ) -> Result<(String, String)> {
+        let collection = self
+            .collections
+            .get(collection_name)
+            .ok_or_else(|| anyhow::anyhow!("Collection not found: {collection_name}"))?;
 
-        Err(anyhow::anyhow!(
-            "No partition found for vector_id {}",
-            vector_id
-        ))
+        let partition = collection
+            .partitions
+            .iter()
+            .find(|partition| {
+                vector_id >= partition.hash_range.0 && vector_id <= partition.hash_range.1
+            })
+            .ok_or_else(|| anyhow::anyhow!("No partition found for vector_id {vector_id}"))?;
+
+        let address = self
+            .nodes
+            .get(&partition.node_id)
+            .ok_or_else(|| anyhow::anyhow!("Unknown node: {}", partition.node_id))?;
+
+        Ok((partition.node_id.clone(), address.clone()))
     }
 }

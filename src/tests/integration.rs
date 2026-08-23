@@ -23,7 +23,8 @@ mod tests {
             name: "col1".to_string(),
             partitions: vec![crate::model::Partition {
                 name: "p0".to_string(),
-                hash_range: (0, 1000),
+                hash_range: (0, u64::MAX),
+                node_id: "node-0".to_string(),
             }],
         }];
 
