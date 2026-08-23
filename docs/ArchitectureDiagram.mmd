@@ -1,0 +1,63 @@
+---
+references:
+  - "File: /src/server/http.rs"
+generationTime: 2026-08-23T20:20:39.074Z
+---
+flowchart TD
+    A["start_http_api(manager)"] --> B["build_router(manager)"]
+    B --> C["Bind TCP listener"]
+    C -->|Bind failure| D["Log error and return"]
+    C -->|Success| E["Serve Axum application"]
+
+    E --> F{"HTTP request route"}
+    F -->|GET /health| G["handle_health()"]
+    G --> H["Return status ok"]
+
+    F -->|GET /metrics| I["handle_metrics()"]
+    I --> J["Read atomic counters"]
+    J --> K["Return Prometheus metrics"]
+
+    F -->|GET /collections| L["handle_collections()"]
+    L --> M["Lock CollectionManager"]
+    M --> N["Return collection list"]
+
+    F -->|GET /collections/:collection/partitions| O["handle_partitions()"]
+    O --> P["Lock CollectionManager"]
+    P --> Q{"Collection exists"}
+    Q -->|Yes| R["Collect partition details"]
+    Q -->|No| S["Return empty list"]
+    R --> T["Return partition list"]
+    S --> T
+
+    F -->|POST /insert| U["handle_insert()"]
+    F -->|POST /search| V["handle_search()"]
+
+    U --> W{"Valid JSON and body size"}
+    W -->|No| X["Return JSON or size error"]
+    W -->|Yes| Y["Validate collection and vector"]
+    Y -->|Invalid| Z["Return bad request"]
+    Y -->|Valid| AA["Lock CollectionManager"]
+    AA --> AB{"Partition found"}
+    AB -->|No| AC["Return not found"]
+    AB -->|Yes| AD["Append vector to WAL"]
+    AD -->|Failure| AE["Return internal error"]
+    AD -->|Success| AF["Insert vector into segment"]
+    AF -->|Failure| AE
+    AF -->|Success| AG["Increment INSERT_COUNT"]
+    AG --> AH["Return insert success"]
+
+    V --> AI{"Valid JSON and body size"}
+    AI -->|No| AJ["Return JSON or size error"]
+    AI -->|Yes| AK["Validate collection, query, and top_k"]
+    AK -->|Invalid| AL["Return bad request"]
+    AK -->|Valid| AM["Lock CollectionManager"]
+    AM --> AN{"Collection exists"}
+    AN -->|No| AO["Return not found"]
+    AN -->|Yes| AP["Iterate over partitions"]
+    AP --> AQ["Search each segment"]
+    AQ -->|Failure| AR["Return internal error"]
+    AQ -->|Success| AS["Collect search results"]
+    AS --> AT["Sort by descending score"]
+    AT --> AU["Truncate to top_k"]
+    AU --> AV["Increment SEARCH_COUNT"]
+    AV --> AW["Return search response"]
