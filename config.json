@@ -1,0 +1,11 @@
+{
+  "storage_root": "./data",
+  "collections": [
+    {
+      "name": "default",
+      "partitions": [
+        { "name": "p0", "hash_range": [0, 18446744073709551615] }
+      ]
+    }
+  ]
+}
