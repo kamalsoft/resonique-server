@@ -35,6 +35,8 @@ fn rejects_complete_invalid_record() {
 fn ignores_incomplete_trailing_record() {
     let (root, path) = wal_path("truncated");
     let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
         .create(true)
         .truncate(true)
         .open(&path)
