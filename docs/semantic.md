@@ -16,7 +16,7 @@ data from its write-ahead log (WAL) after restart.
 | Metadata | Tags, timestamp, and arbitrary key-value attributes. |
 | WAL | Durable append-only record used for recovery. |
 | Segment | In-memory/searchable representation of persisted vectors. |
-| Metric | Similarity calculation, currently including cosine similarity. |
+| Metric | Similarity calculation; currently cosine similarity and L2 distance. |
 
 ## 3. Data Model
 
@@ -84,7 +84,12 @@ Processing order:
 
 `POST /search`
 
-Returns the highest-scoring matching vectors.
+Supports:
+
+- cosine similarity, where higher scores rank first;
+- L2 distance, where lower distances rank first;
+- optional tag and metadata key/value filters;
+- bounded `top_k` result sets.
 
 Processing order:
 

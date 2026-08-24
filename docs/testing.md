@@ -68,4 +68,33 @@ Do not run destructive tests against production data.
 
 A change is ready for review only when unit tests, integration tests,
 performance tests, security tests, formatting, Clippy, dependency auditing,
-and license checks pass.
+license checks, and coverage review are complete.
+
+## Coverage
+
+Generate a text summary:
+
+```bash
+cargo llvm-cov --lib --all-features \
+  --show-missing-lines --summary-only
+```
+
+Generate and open the HTML report on macOS:
+
+```bash
+cargo llvm-cov --lib --all-features --html --open
+```
+
+The report is written to:
+
+```text
+target/llvm-cov/html/index.html
+```
+
+The current baseline contains **84 passing tests**. Coverage includes HTTP,
+MCP, storage, WAL, search, configuration, security, integration, and
+performance tests.
+
+`server::run()` transport orchestration is intentionally not exercised by
+starting real MCP stdin or HTTP listeners. Test manager construction and
+transport handlers independently instead.

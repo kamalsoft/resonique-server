@@ -190,3 +190,21 @@ security, dependency, and penetration-testing procedures.
 
 Behavior described in this document must be validated using the test and
 security procedures in [`testing.md`](testing.md).
+
+## Coverage report
+
+Run the complete local quality workflow:
+
+```bash
+cargo fmt
+cargo test --workspace --all-features --all-targets
+cargo llvm-cov --lib --all-features --html --open
+```
+
+On macOS, the HTML report opens automatically. Otherwise open:
+
+```text
+target/llvm-cov/html/index.html
+```
+
+The current test baseline is **84 passing tests**.

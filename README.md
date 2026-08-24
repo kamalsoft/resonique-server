@@ -649,6 +649,19 @@ For API changes, also perform the API smoke test and update the relevant files u
 -  Upgrade and migration runbooks
 - Request limits and consistent errors 
 
+## Implemented Validation
+
+- HTTP and MCP transport tests.
+- Insert and search tests for cosine and L2 metrics.
+- Request-size, vector-dimension, collection-name, and `top_k` validation.
+- Consistent JSON errors for malformed, invalid, oversized, missing-collection,
+  and storage-failure cases.
+- WAL replay and incomplete trailing-record handling.
+- Path-traversal prevention tests.
+- HTML coverage generation through `cargo llvm-cov`.
+
+Current baseline: **84 tests passing**.
+
 ## Roadmap
 
 ### High Priority
