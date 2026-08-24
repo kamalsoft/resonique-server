@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check compilation
+        run: cargo check --workspace --all-features --all-targets
+
+      - name: Run tests
+        run: cargo test --workspace --all-features --all-targets
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+
+  release:
+    name: Build release artifacts
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-dist
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-dist
+
+      - name: Build and publish release
+        run: cargo dist build --artifacts=local
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd target/distrib
+          shasum -a 256 * > SHA256SUMS
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/distrib/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
