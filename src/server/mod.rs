@@ -17,21 +17,7 @@ pub async fn run() -> Result<()> {
     let config = load_config("config.json")?;
     tracing::info!("📄 Loaded config: {:?}", config);
 
-    let storage = StorageEngine::new(&config.storage_root)?;
-    storage.init()?;
-    tracing::info!("📁 Storage root initialized at {}", config.storage_root);
-
-    let collections = config
-        .collections
-        .iter()
-        .map(Collection::from_manifest)
-        .collect();
-    let mut manager =
-        CollectionManager::new_with_node_id(&storage, collections, config.node_id.clone())?;
-
-    manager.set_nodes(config.nodes);
-
-    let shared_manager = Arc::new(Mutex::new(manager));
+    let shared_manager = Arc::new(Mutex::new(build_manager(&config)?));
 
     let mcp_manager = shared_manager.clone();
     tokio::spawn(async move {
@@ -41,4 +27,21 @@ pub async fn run() -> Result<()> {
     http::start_http_api(shared_manager).await;
 
     Ok(())
+}
+
+pub fn build_manager(config: &crate::model::ServerConfig) -> Result<CollectionManager> {
+    let storage = StorageEngine::new(&config.storage_root)?;
+    storage.init()?;
+
+    let collections = config
+        .collections
+        .iter()
+        .map(Collection::from_manifest)
+        .collect();
+
+    let mut manager =
+        CollectionManager::new_with_node_id(&storage, collections, config.node_id.clone())?;
+
+    manager.set_nodes(config.nodes.clone());
+    Ok(manager)
 }

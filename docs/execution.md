@@ -180,3 +180,13 @@ moved, backed up, or removed.
 | MCP over stdio | Available | JSON-RPC through stdin |
 | Raw custom TCP | Not implemented | — |
 | gRPC over TCP | Not implemented | — |
+
+## Testing and Security
+
+See [`docs/testing.md`](docs/testing.md) for unit, integration, performance,
+security, dependency, and penetration-testing procedures.
+
+## Verification
+
+Behavior described in this document must be validated using the test and
+security procedures in [`testing.md`](testing.md).

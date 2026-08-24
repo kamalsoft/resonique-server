@@ -29,10 +29,7 @@ pub async fn start(manager: SharedManager) -> Result<()> {
     let mut stdout = stdout;
 
     while let Some(line) = reader.next_line().await? {
-        let response = match serde_json::from_str::<JsonRpcRequest>(&line) {
-            Ok(request) => dispatch(request, &manager).await,
-            Err(error) => error_response(Value::Null, -32700, format!("Invalid JSON: {error}")),
-        };
+        let response = dispatch_line(&line, &manager).await;
 
         let encoded = serde_json::to_vec(&response)?;
         stdout.write_all(&encoded).await?;
@@ -41,6 +38,13 @@ pub async fn start(manager: SharedManager) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub(crate) async fn dispatch_line(line: &str, manager: &SharedManager) -> Value {
+    match serde_json::from_str::<JsonRpcRequest>(line) {
+        Ok(request) => dispatch(request, manager).await,
+        Err(error) => error_response(Value::Null, -32700, format!("Invalid JSON: {error}")),
+    }
 }
 
 async fn dispatch(request: JsonRpcRequest, manager: &SharedManager) -> Value {

@@ -709,5 +709,7 @@ Roadmap items must only move to **Implemented Features** after implementation, t
 - HTTP tests covering all request-limit and error cases.
 
 ## CI checks for formatting, compilation, tests, Clippy, security advisories, and dependency policy.
+See [`docs/testing.md`](docs/testing.md) for the complete testing and security
+validation procedure.
 
 

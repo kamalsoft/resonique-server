@@ -1,5 +1,15 @@
+pub mod collection;
 pub mod healthcheck;
+pub mod helpers;
+pub mod http;
+pub mod ingestion;
 pub mod integration;
+pub mod mcp;
+pub mod model;
 pub mod performance;
+pub mod search;
 pub mod security;
+pub mod server;
 pub mod unit;
+pub mod util;
+pub mod wal;

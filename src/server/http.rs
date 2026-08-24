@@ -13,13 +13,13 @@ use tokio::sync::Mutex;
 
 use crate::server::collection::CollectionManager;
 
-const MAX_REQUEST_BYTES: usize = 1_048_576;
-const MAX_VECTOR_DIMENSIONS: usize = 4_096;
-const MAX_TOP_K: usize = 1_000;
-const MAX_COLLECTION_NAME_LENGTH: usize = 128;
+pub(crate) const MAX_REQUEST_BYTES: usize = 1_048_576;
+pub(crate) const MAX_VECTOR_DIMENSIONS: usize = 4_096;
+pub(crate) const MAX_TOP_K: usize = 1_000;
+pub(crate) const MAX_COLLECTION_NAME_LENGTH: usize = 128;
 const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:3000";
 
-fn http_bind_addr() -> SocketAddr {
+pub(crate) fn http_bind_addr() -> SocketAddr {
     std::env::var("RESONIQUE_HTTP_ADDR")
         .ok()
         .and_then(|value| value.parse().ok())
@@ -44,10 +44,10 @@ struct ErrorDetails {
     message: String,
 }
 
-struct ApiError {
-    status: StatusCode,
-    code: &'static str,
-    message: String,
+pub(crate) struct ApiError {
+    pub(crate) status: StatusCode,
+    pub(crate) code: &'static str,
+    pub(crate) message: String,
 }
 
 impl ApiError {
@@ -67,7 +67,7 @@ impl ApiError {
         }
     }
 
-    fn internal(message: impl Into<String>) -> Self {
+    pub(crate) fn internal(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             code: "internal_error",
@@ -181,7 +181,7 @@ pub async fn start_http_api(manager: SharedState) {
     }
 }
 
-fn validate_collection(collection: &str) -> Result<(), ApiError> {
+pub(crate) fn validate_collection(collection: &str) -> Result<(), ApiError> {
     if collection.trim().is_empty() {
         return Err(ApiError::bad_request(
             "invalid_collection",
@@ -202,7 +202,7 @@ fn validate_collection(collection: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn validate_vector(vector: &[f32], field: &str) -> Result<(), ApiError> {
+pub(crate) fn validate_vector(vector: &[f32], field: &str) -> Result<(), ApiError> {
     if vector.is_empty() {
         return Err(ApiError::bad_request(
             "invalid_vector",
@@ -230,7 +230,7 @@ fn validate_vector(vector: &[f32], field: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn validate_top_k(top_k: usize) -> Result<(), ApiError> {
+pub(crate) fn validate_top_k(top_k: usize) -> Result<(), ApiError> {
     if top_k == 0 || top_k > MAX_TOP_K {
         return Err(ApiError::bad_request(
             "invalid_top_k",
@@ -392,261 +392,4 @@ async fn handle_metrics() -> String {
         INSERT_COUNT.load(Ordering::Relaxed),
         SEARCH_COUNT.load(Ordering::Relaxed)
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Mutex as StdMutex;
-
-    static ENV_LOCK: StdMutex<()> = StdMutex::new(());
-
-    #[test]
-    fn uses_default_http_address() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("RESONIQUE_HTTP_ADDR") };
-
-        assert_eq!(http_bind_addr(), "127.0.0.1:3000".parse().unwrap());
-    }
-
-    #[test]
-    fn uses_configured_http_address() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::set_var("RESONIQUE_HTTP_ADDR", "0.0.0.0:8080") };
-
-        assert_eq!(http_bind_addr(), "0.0.0.0:8080".parse().unwrap());
-
-        unsafe { std::env::remove_var("RESONIQUE_HTTP_ADDR") };
-    }
-
-    #[test]
-    fn accepts_valid_collection_name() {
-        assert!(validate_collection("default").is_ok());
-    }
-
-    #[test]
-    fn rejects_empty_collection_name() {
-        let error = validate_collection("").unwrap_err();
-
-        assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(error.code, "invalid_collection");
-    }
-
-    #[test]
-    fn rejects_collection_name_over_limit() {
-        let collection = "a".repeat(MAX_COLLECTION_NAME_LENGTH + 1);
-
-        let error = validate_collection(&collection).unwrap_err();
-
-        assert_eq!(error.code, "invalid_collection");
-    }
-
-    #[test]
-    fn rejects_empty_vector() {
-        let error = validate_vector(&[], "vector").unwrap_err();
-
-        assert_eq!(error.code, "invalid_vector");
-    }
-
-    #[test]
-    fn rejects_vector_over_dimension_limit() {
-        let vector = vec![0.0; MAX_VECTOR_DIMENSIONS + 1];
-
-        let error = validate_vector(&vector, "vector").unwrap_err();
-
-        assert_eq!(error.code, "vector_too_large");
-    }
-
-    #[test]
-    fn rejects_non_finite_vector_values() {
-        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let error = validate_vector(&[value], "query").unwrap_err();
-
-            assert_eq!(error.code, "invalid_vector");
-        }
-    }
-
-    #[test]
-    fn accepts_valid_top_k() {
-        assert!(validate_top_k(1).is_ok());
-        assert!(validate_top_k(MAX_TOP_K).is_ok());
-    }
-
-    #[test]
-    fn rejects_zero_top_k() {
-        let error = validate_top_k(0).unwrap_err();
-
-        assert_eq!(error.code, "invalid_top_k");
-    }
-
-    #[test]
-    fn rejects_top_k_over_limit() {
-        let error = validate_top_k(MAX_TOP_K + 1).unwrap_err();
-
-        assert_eq!(error.code, "invalid_top_k");
-    }
-}
-
-#[cfg(test)]
-mod http_tests {
-    use super::*;
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-    };
-    use std::time::{SystemTime, UNIX_EPOCH};
-    use tower::ServiceExt;
-
-    fn test_app() -> Router {
-        let root = std::env::temp_dir().join(format!(
-            "resonique_http_test_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-
-        let engine = crate::storage::StorageEngine::new(&root).unwrap();
-        engine.init().unwrap();
-
-        let collections = vec![crate::model::Collection {
-            name: "default".to_string(),
-            partitions: vec![crate::model::Partition {
-                name: "p0".to_string(),
-                hash_range: (0, u64::MAX),
-                node_id: "node-0".to_string(),
-            }],
-        }];
-
-        let manager = CollectionManager::new(&engine, collections).unwrap();
-
-        build_router(Arc::new(Mutex::new(manager)))
-    }
-
-    async fn error_response(response: axum::response::Response) -> serde_json::Value {
-        serde_json::from_slice(
-            &axum::body::to_bytes(response.into_body(), MAX_REQUEST_BYTES)
-                .await
-                .unwrap(),
-        )
-        .unwrap()
-    }
-
-    #[tokio::test]
-    async fn malformed_json_returns_consistent_error() {
-        let response = test_app()
-            .oneshot(
-                Request::post("/search")
-                    .header("content-type", "application/json")
-                    .body(Body::from("{invalid"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-        let body = error_response(response).await;
-        assert_eq!(body["error"]["code"], "invalid_json");
-    }
-
-    #[tokio::test]
-    async fn oversized_request_returns_consistent_error() {
-        let response = test_app()
-            .oneshot(
-                Request::post("/insert")
-                    .header("content-type", "application/json")
-                    .body(Body::from(vec![b'x'; MAX_REQUEST_BYTES + 1]))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
-
-        let body = error_response(response).await;
-        assert_eq!(body["error"]["code"], "request_too_large");
-    }
-
-    #[tokio::test]
-    async fn invalid_vector_returns_consistent_error() {
-        let response = test_app()
-            .oneshot(
-                Request::post("/search")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"collection":"default","query":[],"top_k":1}"#,
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-        let body = error_response(response).await;
-        assert_eq!(body["error"]["code"], "invalid_vector");
-    }
-
-    #[tokio::test]
-    async fn invalid_top_k_returns_consistent_error() {
-        let response = test_app()
-            .oneshot(
-                Request::post("/search")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"collection":"default","query":[1.0],"top_k":0}"#,
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-        let body = error_response(response).await;
-        assert_eq!(body["error"]["code"], "invalid_top_k");
-    }
-
-    #[tokio::test]
-    async fn unknown_collection_returns_consistent_error() {
-        let response = test_app()
-            .oneshot(
-                Request::post("/search")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"collection":"missing","query":[1.0],"top_k":1}"#,
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-
-        let body = error_response(response).await;
-        assert_eq!(body["error"]["code"], "not_found");
-    }
-
-    #[tokio::test]
-    async fn excessive_top_k_returns_consistent_error() {
-        let response = test_app()
-            .oneshot(
-                Request::post("/search")
-                    .header("content-type", "application/json")
-                    .body(Body::from(format!(
-                        r#"{{"collection":"default","query":[1.0],"top_k":{}}}"#,
-                        MAX_TOP_K + 1
-                    )))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-        let body = error_response(response).await;
-        assert_eq!(body["error"]["code"], "invalid_top_k");
-    }
 }
